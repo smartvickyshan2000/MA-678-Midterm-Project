@@ -1,0 +1,65 @@
+---
+title: "BankChurners Report"
+author: "Wuji Shan"
+date: "12/01/2021"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(dplyr)
+library(ggplot2)
+library(cowplot)
+```
+
+
+```{r, echo = FALSE}
+BankChurners <- read.csv("BankChurners.csv", header = TRUE)
+BankChurners <- na.omit(BankChurners)
+# Dropping the client number column and last eight columns
+BankChurners <- BankChurners[, -c(1, 8, 16:23)]
+```
+
+```{r, echo = FALSE}
+Attrited <- subset(BankChurners, Attrition_Flag == "Attrited Customer")
+Attrited <- Attrited[, -c(1)]
+```
+
+# Abstract
+
+# Exploratory Data Analysis
+
+## Distributions of all numeric variables
+```{r, echo = FALSE, fig.width = 12}
+my_plots <- lapply(names(Attrited), function(var_x){
+  p <- 
+    ggplot(Attrited) +
+    aes_string(var_x)
+
+  if(is.numeric(Attrited[[var_x]])) {
+    p <- p + geom_density()
+
+#  } else {
+#    p <- p + geom_bar()
+#  } 
+}})
+
+plot_grid(plotlist = my_plots, nrow = 4, ncol = 3)
+```
+
+## Distributions of all categorical variables
+```{r, echo = FALSE, fig.width = 18}
+my_plots_cat <- lapply(names(Attrited), function(var_x_cat){
+  p <- 
+    ggplot(Attrited) +
+    aes_string(var_x_cat)
+
+  if(is.character(Attrited[[var_x_cat]])) {
+    p <- p + geom_bar()
+
+}})
+
+plot_grid(plotlist = my_plots_cat, nrow = 4, ncol = 3)
+```
+
+
