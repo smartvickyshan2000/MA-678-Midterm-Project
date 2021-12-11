@@ -29,12 +29,30 @@ library(arm)
 source("functions.R")
 ```
 
+# Abstract
+
+Credit card has taken up a significant part of people's lives in the current society. The "Credit Card Customers" dataset is data of the consumer credit card portfolio of a bank, including 10,000 customers with their age, gender, income, marital status, education level, and etc. The manager wants to know the reason behind customer attrition.  
+
+To deal with this problem, I made exploratory data analysis and built a multilevel model. This report are consisted of 5 main parts: Introduction, Method, Result and Discussion. Other explorations besides what in Method part are all put in Appendix.
+
+# Introduction
+
+Customer churning is a serious situation faced by many corporations and organizations. It has become a significant point that how to deal with this issue and keep customers. To achieve that goal, one of the main focuses of corporations may be detecting the reasons why customers have made the churning decision via analyzing past data, so that they could take effective actions to prevent the customer leaving situation better.
+
+The dataset I choose for this project is published on [Kaggle: Credit Card customers -- BankChurners Dataset](https://www.kaggle.com/sakshigoyal7/credit-card-customers), which includes 10127 observations and 23 variables. After data cleaning and processing, I will make exploratory data analysis from various angles, and use a multilevel model to see what and how attributes may influence the choice of customers to churn from the bank credit card service.
+
+# Method
+
+## Data Cleaning and Processing
 
 ```{r, echo = FALSE}
 BankChurners <- read.csv("BankChurners.csv", header = TRUE)
 BankChurners <- na.omit(BankChurners)
-# Dropping the client number column and last eight columns
+
 BankChurners <- BankChurners[, -c(1, 5, 10, 13:17, 20:23)]
+
+BankChurners <- BankChurners %>% filter(Education_Level != "Unknown" & 
+                                          Marital_Status != "Unknown" & Income_Category != "Unknown")
 ```
 
 ```{r, echo = FALSE}
@@ -43,21 +61,31 @@ Existing <- subset(BankChurners, Attrition_Flag == "Existing Customer")
 Attrited <- subset(BankChurners, Attrition_Flag == "Attrited Customer")
 ```
 
-# Abstract
-
-Credit Card has taken up a significant part of people's lives in the current society. The "Credit Card Customers" dataset is data of the consumer credit card portfolio of a bank, including 10,000 customers with their age, gender, income, marital status, education level, and etc. The manager wants to know the reason behind customer attrition.  
-
-To deal with this problem, I made exploratory data analysis and built a multilevel model. This report are consisted of 5 main parts: Introduction, Method, Result and Discussion. Other explorations besides what in Method part are all put in Appendix.
-
-# Introduction
-
-# Method
-
-## Data Cleaning and Processing
-
-```{r, echo = FALSE}
+```{r, echo = FALSE, include = FALSE}
 summary(BankChurners)
 ```
+
+Look into the data and finished the following processing steps: 
+
+1. Subset down to 10 out of 23 variables;
+2. Removed customer observations with "unknown" answer of categorical variables;
+3. Split the data into 2 groups based on customer type: Existing and Attrited Customer.
+
+After my data cleaning and processing, the dataset utilized later has 7081 observations and 10 variables besides customer type.  
+
+10 Variables Utilized:  
+
+- Customer_Age: Customer's Age in Years
+- Gender: M = Male, F = Female
+- Education_Level: Educational Qualification of the account holder
+- Marital_Status: Married, Single, Divorced, Unknown
+- Income_Category: Annual Income Category of the account holder
+- Card_Category: Type of Card (Blue, Silver, Gold, Platinum)
+- Total_Relationship_Count: Total no. of products held by the customer
+- Months_Inactive_12_mon: Number of months inactive in the last 12 months
+- Total_Trans_Amt: Total Transaction Amount (Last 12 months)
+- Total_Trans_Ct: Total Transaction Count (Last 12 months)
+
 
 ## Exploratory Data Analysis
 
@@ -116,7 +144,7 @@ sum_Attrited <- Attrited %>% select_if(is.character) %>% map( ~ table(.) %>% pro
 a. Pie charts of Gender Proportion comparison for Existing and Attrited customers
 ```{r, echo = FALSE}
 ##### set pie for existing customers: Gender
-pie_existing_gender <- data.frame(class = c("Female", "Male"), Prop = c(52.09, 47.91))
+pie_existing_gender <- data.frame(class = c("Female", "Male"), Prop = c(53.10, 46.90))
 # Add label position
 pie_existing_gender <- pie_existing_gender %>%
   arrange(desc(class)) %>%
@@ -125,7 +153,7 @@ pie_existing_gender <- pie_existing_gender %>%
 mycols_gender <- c("#d0776e", "#b4dfec")
 
 ##### set pie for attrited customers: Gender
-pie_attrited_gender <- data.frame(class = c("Female", "Male"), Prop = c(57.16, 42.84))
+pie_attrited_gender <- data.frame(class = c("Female", "Male"), Prop = c(51.75, 48.25))
 # Add label position
 pie_attrited_gender <- pie_attrited_gender %>%
   arrange(desc(class)) %>%
@@ -148,19 +176,19 @@ b. Pie charts of Education Level Proportion comparison for Existing and Attrited
 ```{r, echo = FALSE}
 ##### set pie for existing customers: Education
 pie_existing_edu <- data.frame(class = c("College", "Doctorate", "Graduate", "High School", 
-                                         "Post-Graduate", "Uneducated", "Unknown"), 
-                               Prop = c(10.11, 4.19, 31.07, 20.08, 4.99, 14.71, 14.86))
+                                         "Post-Graduate", "Uneducated"), 
+                               Prop = c(11.93, 4.74, 36.61, 23.73, 5.93, 17.06))
 # Add label position
 pie_existing_edu <- pie_existing_edu %>%
   arrange(desc(class)) %>%
   mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
 # set colors
-mycols_edu <- c("#bfcdd0", "#6e7d75", "#d0776e", "#ebbdb1", "#eaaa65", "#d6e66f", "#ffd56e")
+mycols_edu <- c("#bfcdd0", "#6e7d75", "#d0776e", "#ebbdb1", "#eaaa65", "#d6e66f")
 
 ##### set pie for attrited customers: Education
 pie_attrited_edu <- data.frame(class = c("College", "Doctorate", "Graduate", "High School", 
-                                         "Post-Graduate", "Uneducated", "Unknown"), 
-                               Prop = c(9.47, 5.84, 29.93, 18.81, 5.65, 14.57, 15.73))
+                                         "Post-Graduate", "Uneducated"), 
+                               Prop = c(11.86, 6.74, 36.48, 21.29, 6.92, 16.71))
 # Add label position
 pie_attrited_edu <- pie_attrited_edu %>%
   arrange(desc(class)) %>%
@@ -184,18 +212,18 @@ Assuming that customers with "unknown" education level did not receive any educa
 c. Pie charts of Marital Status Proportion comparison for Existing and Attrited customers
 ```{r, echo = FALSE}
 ##### set pie for existing customers: Marital Status
-pie_existing_Marital <- data.frame(class = c("Divorced", "Married", "Single", "Unknown"), 
-                               Prop = c(7.38, 46.80, 38.53, 7.29))
+pie_existing_Marital <- data.frame(class = c("Divorced", "Married", "Single"), 
+                               Prop = c(7.99, 50.85, 41.15))
 # Add label position
 pie_existing_Marital <- pie_existing_Marital %>%
   arrange(desc(class)) %>%
   mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
 # set colors
-mycols_Marital <- c("#bcc0ec", "#e7a5cc", "#f281a7", "#f0715c")
+mycols_Marital <- c("#bcc0ec", "#e7a5cc", "#f281a7")
 
 ##### set pie for attrited customers: Marital Status
-pie_attrited_Marital <- data.frame(class = c("Divorced", "Married", "Single", "Unknown"), 
-                               Prop = c(7.44, 43.58, 41.06, 7.93))
+pie_attrited_Marital <- data.frame(class = c("Divorced", "Married", "Single"), 
+                               Prop = c(8.27, 47.53, 44.20))
 # Add label position
 pie_attrited_Marital <- pie_attrited_Marital %>%
   arrange(desc(class)) %>%
@@ -222,19 +250,19 @@ d. Pie charts of Income Category Proportion comparison for Existing and Attrited
 ```{r, echo = FALSE}
 ##### set pie for existing customers: Income Category
 pie_existing_income <- data.frame(class = c("$120K +", "$40K - $60K", "$60K - $80K", 
-                                            "$80K - $120K", "Less than $40K", "Unknown"), 
-                               Prop = c(7.07, 17.87, 14.27, 15.21, 34.69, 10.88))
+                                            "$80K - $120K", "Less than $40K"), 
+                               Prop = c(7.88, 20.24, 16.05, 16.97, 38.86))
 # Add label position
 pie_existing_income <- pie_existing_income %>%
   arrange(desc(class)) %>%
   mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
 # set colors
-mycols_income <- c("#94acbc", "#527b7c", "#cbacd9", "#8a7ba8", "#3ea4af", "#f1b891")
+mycols_income <- c("#94acbc", "#527b7c", "#cbacd9", "#8a7ba8", "#3ea4af")
 
 ##### set pie for attrited customers: income category
 pie_attrited_income <- data.frame(class = c("$120K +", "$40K - $60K", "$60K - $80K", 
-                                            "$80K - $120K", "Less than $40K", "Unknown"), 
-                               Prop = c(7.74, 16.66, 11.62, 1.49, 37.62, 11.49))
+                                            "$80K - $120K", "Less than $40K"), 
+                               Prop = c(9.16, 18.33, 13.03, 16.98, 42.50))
 # Add label position
 pie_attrited_income <- pie_attrited_income %>%
   arrange(desc(class)) %>%
@@ -255,7 +283,7 @@ ggarrange(plot_existing_income, plot_attrited_income, ncol = 2, nrow = 1)
 ```{r, echo = FALSE}
 # Assign the level order
 income_level <- c("$120K +", "$40K - $60K", "$80K - $120K", 
-                  "$60K - $80K", "Less than $40K", "Unknown")
+                  "$60K - $80K", "Less than $40K")
 
 # Find % of customers who are about to leave
 income <- BankChurners %>%
@@ -268,7 +296,7 @@ income <- BankChurners %>%
   mutate(
     pct_txt = scales::percent(pct),
     Income_Category = Income_Category %>% factor(levels = c("$120K +", "$40K - $60K", "$80K - $120K", 
-                  "$60K - $80K", "Less than $40K", "Unknown")) %>% fct_rev(),
+                  "$60K - $80K", "Less than $40K")) %>% fct_rev(),
     Income_Category = Income_Category %>% as_factor() %>% fct_reorder(pct),
     Attrition_Flag = Attrition_Flag %>% as_factor() %>% fct_rev()
   ) 
@@ -434,8 +462,8 @@ Showing pie charts of overall analysis of the whole data.
 ```{r, echo = FALSE}
 ##### set pie 1: Attrition_Flag
 pie <- data.frame(class = c("Existing Customer", "Attrited Customer"),
-                  Total = c(8500, 1627),
-                  Prop = c(83.93, 16.07))
+                  Total = c(5968, 1113),
+                  Prop = c(84.28, 15.72))
 # Add label position
 pie <- pie %>%
   arrange(desc(class)) %>%
@@ -444,7 +472,7 @@ pie <- pie %>%
 mycols <- c("#868686FF", "#0073C2FF")
 
 ##### set pie 2: Gender
-pie2 <- data.frame(class = c("Female", "Male"), Prop = c(52.91, 47.09))
+pie2 <- data.frame(class = c("Female", "Male"), Prop = c(47.66, 52.34))
 # Add label position
 pie2 <- pie2 %>%
   arrange(desc(class)) %>%
@@ -454,24 +482,24 @@ mycols2 <- c("#d0776e", "#b4dfec")
 
 ##### set pie 3: Education_Level
 pie3 <- data.frame(class = c("College", "Doctorate", "Graduate", "High School", "Post-Graduate",
-                             "Uneducated", "Unknown"), 
-                   Prop = c(10.00, 4.45, 30.89, 19.88, 5.10, 14.68, 15.00))
+                             "Uneducated"), 
+                   Prop = c(11.92, 5.06, 36.59, 23.34, 6.09, 17.00))
 # Add label position
 pie3 <- pie3 %>%
   arrange(desc(class)) %>%
   mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
 # set colors
-mycols3 <- c("#bfcdd0", "#6e7d75", "#d0776e", "#ebbdb1", "#eaaa65", "#d6e66f", "#ffd56e")
+mycols3 <- c("#bfcdd0", "#6e7d75", "#d0776e", "#ebbdb1", "#eaaa65", "#d6e66f")
 
 ##### set pie 4: Marital_Status
-pie4 <- data.frame(class = c("Divorced", "Married", "Single", "Unknown"), 
-                   Prop = c(7.39, 46.28, 38.94, 7.40))
+pie4 <- data.frame(class = c("Divorced", "Married", "Single"), 
+                   Prop = c(8.04, 50.33, 41.63))
 # Add label position
 pie4 <- pie4 %>%
   arrange(desc(class)) %>%
   mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
 # set colors
-mycols4 <- c("#bcc0ec", "#e7a5cc", "#f281a7", "#f0715c")
+mycols4 <- c("#bcc0ec", "#e7a5cc", "#f281a7")
 
 ```
 
