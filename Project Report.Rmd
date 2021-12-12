@@ -1,7 +1,7 @@
 ---
 title: "BankChurners Report"
 author: "Wuji Shan"
-date: "12/01/2021"
+date: "12/10/2021"
 output: pdf_document
 ---
 
@@ -23,6 +23,9 @@ library(forcats)
 library(ggsci)
 library(ggridges)
 library(arm)
+library(rstanarm)
+library(kableExtra)
+library(ggalluvial)
 ```
 
 ```{r, echo = FALSE}
@@ -31,9 +34,9 @@ source("functions.R")
 
 # Abstract
 
-Credit card has taken up a significant part of people's lives in the current society. The "Credit Card Customers" dataset is data of the consumer credit card portfolio of a bank, including 10,000 customers with their age, gender, income, marital status, education level, and etc. The manager wants to know the reason behind customer attrition.  
+Credit card has taken up a significant part of people's lives in the current society. The "Credit Card Customers" dataset is data of the consumer credit card portfolio of a bank, including 10,000 customers with their age, gender, income, marital status, education level, and etc. The manager wants to know the reason behind customer attrition. 
 
-To deal with this problem, I made exploratory data analysis and built a multilevel model. This report are consisted of 5 main parts: Introduction, Method, Result and Discussion. Other explorations besides what in Method part are all put in Appendix.
+This report aims to deal with this customer attrition problem. I made exploratory data analysis and built a multilevel model, which uses utilizing Education_Level as the varying intercept and Gender as the varying slope. This report are consisted of 5 main parts: Introduction, Method, Result, Discussion, and Limitation. Other explorations besides what in Method part are all put in Appendix.
 
 # Introduction
 
@@ -49,130 +52,341 @@ The dataset I choose for this project is published on [Kaggle: Credit Card custo
 BankChurners <- read.csv("BankChurners.csv", header = TRUE)
 BankChurners <- na.omit(BankChurners)
 
-BankChurners <- BankChurners[, -c(1, 5, 10, 13:17, 20:23)]
+BankChurners <- BankChurners[, -c(1, 5, 10, 13:23)]
 
 BankChurners <- BankChurners %>% filter(Education_Level != "Unknown" & 
                                           Marital_Status != "Unknown" & Income_Category != "Unknown")
 ```
 
 ```{r, echo = FALSE}
-Existing <- subset(BankChurners, Attrition_Flag == "Existing Customer")
+# Factor all categorical variables
+BankChurners$Attrition_Flag <- as_factor(BankChurners$Attrition_Flag)
+BankChurners$Gender <- as_factor(BankChurners$Gender)
+BankChurners$Education_Level <- as_factor(BankChurners$Education_Level)
+BankChurners$Marital_Status <- as_factor(BankChurners$Marital_Status)
+BankChurners$Income_Category <- as_factor(BankChurners$Income_Category)
+BankChurners$Card_Category<- as_factor(BankChurners$Card_Category)
+```
 
+```{r, echo = FALSE}
+Existing <- subset(BankChurners, Attrition_Flag == "Existing Customer")
 Attrited <- subset(BankChurners, Attrition_Flag == "Attrited Customer")
 ```
 
-```{r, echo = FALSE, include = FALSE}
-summary(BankChurners)
-```
 
-Look into the data and finished the following processing steps: 
+After looking into the data, I have finished the following processing steps to prepare for the next step of EDA and model fitting:  
 
-1. Subset down to 10 out of 23 variables;
-2. Removed customer observations with "unknown" answer of categorical variables;
-3. Split the data into 2 groups based on customer type: Existing and Attrited Customer.
+1. Subset down to 8 variables and factor all categorical variables;  
+2. Removed customer observations with "unknown" answer of categorical variables;  
+3. Split the data into 2 groups based on customer type: Existing and Attrited Customer.  
 
-After my data cleaning and processing, the dataset utilized later has 7081 observations and 10 variables besides customer type.  
-
-10 Variables Utilized:  
-
-- Customer_Age: Customer's Age in Years
-- Gender: M = Male, F = Female
-- Education_Level: Educational Qualification of the account holder
-- Marital_Status: Married, Single, Divorced, Unknown
-- Income_Category: Annual Income Category of the account holder
-- Card_Category: Type of Card (Blue, Silver, Gold, Platinum)
-- Total_Relationship_Count: Total no. of products held by the customer
-- Months_Inactive_12_mon: Number of months inactive in the last 12 months
-- Total_Trans_Amt: Total Transaction Amount (Last 12 months)
-- Total_Trans_Ct: Total Transaction Count (Last 12 months)
+After my data cleaning and processing, the data set utilized later has 7081 observations and 10 variables besides customer type.  
 
 
 ## Exploratory Data Analysis
-
-```{r}
-# Create theme parameters
-theme <- theme_bw() + 
-      theme(plot.title = element_text(face = "bold", color = "black", size=14),
-        plot.subtitle = element_text(face = "italic", color = "black", size=12),
-        axis.text = element_text(color = "black"), legend.text = element_text(size=10),
-        legend.title = element_text(size = 12), legend.position = "none",
-        strip.background =element_rect(fill="#666666"), strip.text = element_text(color="white", face="bold"),
-        plot.caption = element_text(face = "italic"))
-```
-
-### Distributions of all numeric variables
-```{r, echo = FALSE, fig.width = 12}
-my_plots <- lapply(names(BankChurners), function(var_x){
-  p <- 
-    ggplot(BankChurners) +
-    aes_string(var_x)
-
-  if(is.numeric(BankChurners[[var_x]])) {
-    p <- p + geom_density()
-
-#  } else {
-#    p <- p + geom_bar()
-#  } 
-}})
-
-plot_grid(plotlist = my_plots, nrow = 4, ncol = 3)
-```
-
-### Distributions of all categorical variables
-```{r, echo = FALSE, fig.width = 18}
-my_plots_cat <- lapply(names(BankChurners), function(var_x_cat){
-  p <- 
-    ggplot(BankChurners) +
-    aes_string(var_x_cat)
-
-  if(is.character(BankChurners[[var_x_cat]])) {
-    p <- p + geom_bar()
-
-}})
-
-plot_grid(plotlist = my_plots_cat, nrow = 4, ncol = 3)
-```
 
 ```{r, echo = FALSE}
 sum_Existing <- Existing %>% select_if(is.character) %>% map( ~ table(.) %>% prop.table())
 sum_Attrited <- Attrited %>% select_if(is.character) %>% map( ~ table(.) %>% prop.table())
 ```
 
+### Correlation Analysis
+
+To find which and how features affect customer attrition, first, I'm interested in detecting the overall relationship between variables and the attrition flag of existing & attrited customer group after subseting down the data set. Here, I choose to plot a correlation funnel graph to show whether they are correlated with attrition. Three of variables chosen are numerical, and five of them are categorical.
+
+```{r, echo = FALSE, warning = FALSE, fig.cap = "correlation analysis", fig.height = 4, fig.width = 10}
+correlation <- BankChurners %>% binarize()
+
+correlation %>%
+  correlate(target = Attrition_Flag__Attrited_Customer) %>%
+  filter(feature %in% c("Customer_Age", "Total_Relationship_Count", "Months_Inactive_12_mon", "Gender", 
+                        "Education_Level", "Income_Category", "Marital_Status", "Card_Category")) %>%
+  plot_correlation_funnel(interactive = FALSE, limits = c(-0.3, 0.3))
+```
+
+Via investigating these 8 variables as a correlation funnel graph, we can observe the order of their importance to churning options is from the top to bottom. x-axis going larger than 0 represents that the variable type is more likely to make the choice of attrition; on the contrary, x-axis smaller than 0 represents that they are more likely to exist.  
+
+### Level of Total Relationship Count & Inactivity
+
+Inactive months and total relationship count are the top 2 variables in the correlation funnel, so I want to investigate them to prepare for the comparison of visualization and model fitting.
+```{r, echo = FALSE}
+products <- BankChurners %>% 
+  dplyr::select(Attrition_Flag, Total_Relationship_Count)
+
+# Levels of Inactivity by attrition flag
+plot_products <- products %>% 
+  ggplot(aes(x = Total_Relationship_Count, y = Attrition_Flag, fill = Attrition_Flag)) + 
+  stat_density_ridges(quantile_lines = TRUE, quantiles = 2, alpha = 0.4) + 
+  scale_fill_nejm() + 
+  labs(
+    title = "Level of Total Relationship Count",
+    x = "Total Relationship Count (number of products held)", 
+    y = "Group"
+  )
+
+activity <- BankChurners %>% 
+  dplyr::select(Attrition_Flag, Months_Inactive_12_mon)
+
+# Levels of Inactivity by attrition flag
+plot_activity <- activity %>% 
+  ggplot(aes(x = Months_Inactive_12_mon, y = Attrition_Flag, fill = Attrition_Flag)) + 
+  stat_density_ridges(quantile_lines = TRUE, quantiles = 2, alpha = 0.4) + 
+  scale_fill_nejm() + 
+  labs(
+    title = "Level of Inactivity",
+    x = "Inactive Months", 
+    y = "Group"
+  )
+```
+
+```{r, echo = FALSE, message = FALSE, fig.cap = "Level of Total Relationship Count & Inactivity", fig.height = 3, fig.width = 10}
+ggarrange(plot_products, plot_activity, ncol = 2, nrow = 1)
+```
+
+These 2 plots in figure 3 shows that Attrition Customers have lower relationship count (products held) and higher levels of Inactivity.
+
+### Education Level & Income category
+
+Education level and income category are the top 2 categorical variables besides gender in the correlation funnel, so I want to investigate them to prepare for the comparison of visualization and model fitting. Also, I will explore relationship between combination of various variables including these two and the attrition choice.
+```{r, echo = FALSE}
+# Assign the level order
+Education_Level <- c("College", "Doctorate", "Graduate", "High School", "Post-Graduate", "Uneducated")
+
+# Find % of customers who are about to leave
+education <- BankChurners %>%
+  dplyr::select(Attrition_Flag, Education_Level) %>% 
+  count(Attrition_Flag, Education_Level) %>% 
+  group_by(Education_Level) %>% 
+  mutate(percent = n / sum(n)) %>% 
+  ungroup() %>% 
+  arrange(desc(percent)) %>% 
+  mutate(
+    PERCENT = scales::percent(percent),
+    Education_Level = Education_Level %>% factor(levels = c("College", "Doctorate", "Graduate", "High School", "Post-Graduate", "Uneducated")) %>% fct_rev(),
+    Education_Level = Education_Level %>% as_factor() %>% fct_reorder(percent),
+    Attrition_Flag = Attrition_Flag %>% as_factor() %>% fct_rev()
+  ) 
+```
+
+```{r, echo = FALSE}
+# Plot Visualization
+plot_education<-
+  education %>% 
+  ggplot(aes(x = Education_Level, y = percent, color= Attrition_Flag)) + 
+  geom_segment(aes(yend = 0, xend = Education_Level), size = 1) + 
+  geom_point() + geom_label(aes(label = PERCENT), hjust = "inward",
+                            size = 3) + coord_flip() +
+  facet_wrap(~ Attrition_Flag) + 
+  theme(legend.position = "none") + 
+  scale_colour_nejm() + 
+  labs(
+    title = "Levels of Attrition by Education Level",
+    x = "Education Level",
+    y = "Attrition Percentage"
+  )
+```
+
+```{r, echo = FALSE}
+# Assign the level order
+income_level <- c("$120K +", "$40K - $60K", "$80K - $120K", 
+                  "$60K - $80K", "Less than $40K")
+
+# Find % of customers who are about to leave
+income <- BankChurners %>%
+  dplyr::select(Attrition_Flag, Income_Category) %>% 
+  count(Attrition_Flag, Income_Category) %>% 
+  group_by(Income_Category) %>% 
+  mutate(percent = n / sum(n)) %>% 
+  ungroup() %>% 
+  arrange(desc(percent)) %>% 
+  mutate(
+    PERCENT = scales::percent(percent),
+    Income_Category = Income_Category %>% factor(levels = c("$120K +", "$40K - $60K", "$80K - $120K", 
+                  "$60K - $80K", "Less than $40K")) %>% fct_rev(),
+    Income_Category = Income_Category %>% as_factor() %>% fct_reorder(percent),
+    Attrition_Flag = Attrition_Flag %>% as_factor() %>% fct_rev()
+  ) 
+```
+
+```{r, echo = FALSE}
+# Plot Visualization
+plot_income <- 
+  income %>% 
+  ggplot(aes(x = Income_Category, y = percent, color= Attrition_Flag)) + 
+  geom_segment(aes(yend = 0, xend = Income_Category), size = 1) + 
+  geom_point() + geom_label(aes(label = PERCENT), hjust = "inward",
+                            size = 3) + coord_flip() +
+  facet_wrap(~ Attrition_Flag) + 
+  theme(legend.position = "none") + 
+  scale_colour_nejm() + 
+  labs(
+    title = "Levels of Attrition by Income Category",
+    x = "Income Category",
+    y = "Attrition Percentage"
+  )
+```
+
+```{r, echo = FALSE, message = FALSE, fig.cap = "Education & Income Proportion Analysis", fig.height = 3, fig.width = 10}
+ggarrange(plot_education, plot_income, ncol = 2, nrow = 1)
+```
+
+We can observe that the highest Education Level Doctorate has a highest proportion among attrition customers. The lowest proportion group is high school level, which takes up lower proportion than uneducated level. Also, we can observe that the highest income category 120K+ dollars has a highest proportion among attrition customer group. followed by Less than 40K dollars, which is the lowest income category. 
+
+### Customer Attrition Combination
+
+After investigating individual variable, I'm wondering whether I can find a combination of variables which are more likely to make churning options. From Figure 1, we can see that Gender, Education_Levl, and Income_Category are three categorical variables having largest correlation, so we choose to first combine them.
+
+```{r, echo = FALSE}
+combination <- BankChurners %>% 
+  dplyr::select(Attrition_Flag, Gender, Education_Level, Income_Category) %>% 
+  filter(Attrition_Flag == "Attrited Customer") %>% 
+  count(Attrition_Flag, Gender, Education_Level, Income_Category) %>% 
+  mutate(
+    com_group = ifelse(Gender == "F" & Education_Level == "Graduate" & 
+                         Income_Category == "Less than $40K", "Yes", "no")
+  )
+```
+
+```{r, echo = FALSE, fig.height = 3, fig.width = 10, fig.cap = "Detecting Combination of Group"}
+combination %>% 
+  ggplot(aes(y = n, axis1 = Gender, axis2 = Education_Level, axis3 = Income_Category)) +
+  geom_alluvium(aes(fill = com_group), alpha = 0.4,  absolute = FALSE) + 
+  geom_stratum(absolute = FALSE, width = 0.45) + 
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), absolute = FALSE) + 
+  scale_x_discrete(limits = c("Income Category", "Education Level", "Gender"), expand = c(.08, .05)) + 
+  labs(title = "Detecting Combination of Groups -- Attrited Customer", y = "Count")
+```
+We can observe that Female Graduates in the low income category take up the most proportion of Attrited customer group.
+
+## Model Fitting
+```{r, echo = FALSE}
+BankChurners$Attrition_Flag <- ifelse(BankChurners$Attrition_Flag == "Existing Customer", 0, 1)
+```
+
+I used a multilevel model to fit the data, utilizing Education_Level as the varying intercept and Gender as the varying slope. I have attempted several multilevel models to get better fitting, including ‘lmer’ and ‘glmer’ (which is in the appendix). Comparing their results, I finally chose ‘stan_glmer’ because the response of this data set is binary, which needs to use logistic methods. The binned residual plot shows that ‘stan_glmer’ is a better model fit here as well, because most points fall inside the confidence bands, and there is not a distinctive pattern to the residuals. Additionally, I removed some variables which owns coefficients too small to identify and compare.
+
+```{r, include = FALSE}
+fit_BankChurners <- stan_glmer(Attrition_Flag ~ Customer_Age + Marital_Status + Income_Category + 
+                            Card_Category + Total_Relationship_Count + Months_Inactive_12_mon + 
+                            (1 + Gender|Education_Level), data = BankChurners)
+```
+
+```{r, echo = FALSE, message = FALSE}
+# summary(fit_BankChurners, digits = 4)
+```
+
+```{r, echo = FALSE, fig.align = "center", fig.height = 3, fig.width = 6}
+binnedplot(fitted(fit_BankChurners), resid(fit_BankChurners))
+```
+
+# Result
+```{r, echo = FALSE}
+Fixed_Effect <- fixef(fit_BankChurners)
+Random_Effects <- round(ranef(fit_BankChurners)$Education_Level, 3)
+```
+
+## Model Coefficients
+Because many variables are fit in the model, I only choose to take one example formula for card type category:  
+
+$Attrition Flag = 0.0007 - 0.0253*(Gold Card) - 0.0059*(Silver Card) + 0.0483*(Platinum Card)$  
+
+The coeffcient of Card_CategoryGold and Card_CategorySilver are both negative, but that of Card_CategoryPlatinum is positive, which represents that in average, customers owning gold or silver cards are more likely to stay but customers with platinum cards are more liekly to choose to churn from the bank's credit card service.
+
+## Fixed Effects
+
+|    Variable                  | Estimate | s.d.   |t value|
+|:---:                         |:---:     |:---:   |:---:|
+|Customer_Age                  |-0.0002   | 0.0005 |-0.434 | 
+|Marital_StatusSingle          | 0.0136   | 0.0088 | 1.570 |
+|Marital_StatusDivorced        | 0.0126   | 0.0159 | 0.812 |
+|Income_CategoryLess than $40K | 0.0173   | 0.0187 | 0.656 |
+|Income_Category$80K - $120K   | 0.0266   | 0.0148 | 1.784 |
+|Income_Category$40K - $60K    | 0.0032   | 0.0168 |-0.053 |
+|Income_Category$120K +        | 0.0452   | 0.0180 | 2.462 |
+|Card_CategoryGold             |-0.0253   | 0.0399 |-0.641 |
+|Card_CategorySilver           |-0.0059   | 0.0184 |-0.304 |
+|Card_CategoryPlatinum         | 0.0483   | 0.1099 | 0.501 |
+|Total_Relationship_Count      |-0.0344   | 0.0027 |-12.516 |
+|Months_Inactive_12_mon        | 0.0558   | 0.0043 | 13.138 |
+
+## Random Effects
+```{r, echo = FALSE}
+#print(Fixed_Effect)
+Random_Effects <- data.frame(Random_Effects)
+#print(Random_Effects)
+#plot(fitted(fit_BankChurners), resid(fit_BankChurners))
+```
+|    Type                  | Intercept | GenderM
+|:---:                     |:---:     |:---:  
+|High School               |-0.007   | 0.008 
+|Graduate                  |-0.009   | 0.032 
+|Uneducated                |-0.002   | 0.008
+|College                   | 0.001   |-0.002
+|Post-Graduate             | 0.008   | 0.006
+|Doctorate                 | 0.006   | 0.047  
+
+# Discussion
+
+From the fitting results of the multilevel model, we can see some variables types are statistically significant, including Income_Category$120K +, Total_Relationship_Count, and Months_Inactive_12_mon -- effects not that much but there exist. The model results are similar to what I've mentioned before in the first two parts of EDA - correlation analysis and level of Total Relationship Count & Inactivity, which are really top 2 important variables affecting response most both in the EDA and model fitting results. Most variables state positive impacts on attrition choice.
+
+When it only comes to findings of this report, the bank could take some actions to prevent their customer attrition better. One is to put more efforts on lower income group. Although their average spending seems not much significant, their population amount takes up nearly 40% of all customers in this data set. The other is focusing on customers' activity level. We can observe that the longest inactive months of attrited customers is 6 months. During these 6 months, the bank can detect the customer's inactivity and take actions like calling to do market research, introduce new products, or invite them to bank's promotions to arouse consumers' interest.  
+
+One interesting finding is both EDA and model results show that customers with platinum cards are more likely to leave the service. Platinum cards are generally related to customers with more products held and active transactions, which are both more correlated to existing customers, but card category of plstinum shows the contrary correlation, meaning that the results of customer churning situation may have been also affected by some other factors not included but worth being explored in the future analysis.  
+
+# Limitation
+
+Limitation of the model process is that the use of variables is not enough based on the whole number of 23 variables, because I only chose 8 of them to investigate. Also, there exist two variables Trans_Count_Amt and Trans_Count_Ct, which are really two most correlated variables when doing funnel analysis. However, each time I tried to add them into model fitting via 'glmer' and 'stan_glmer', the binned residual plot all shows a distinctly strange pattern and most of points fall outside the confidence bands. In the future analysis, I will add more features to do research and find better methods to make well-fitting model.
+
+# Reference
+
+1. Goyao, Sakshi, Credit Card customers, Kaggle,  
+https://www.kaggle.com/sakshigoyal7/credit-card-customers
+
+2. Introducing Correlation Funnel - Customer Churn Example,  
+https://cran.r-project.org/web/packages/correlationfunnel/vignettes/introducing_correlation_funnel.html  
+
+3. ggpubr: Publication Ready Plots, STHDA,  
+http://www.sthda.com/english/articles/24-ggpubr-publication-ready-plots/81-ggplot2-easy-way-to-mix-multiple-graphs-on-the-same-page/  
+
+4. Interpreting Residual Plots to Improve Your Regression, qualtrics  
+https://www.qualtrics.com/support/stats-iq/analyses/regression-guides/interpreting-residual-plots-improve-regression/ 
+
+5. Brunson, Jason Cory, Alluvial Plots in ggplot2, 2020.12.04,  
+https://cran.r-project.org/web/packages/ggalluvial/vignettes/ggalluvial.html
+
+
+
+
+\pagebreak
+
+# Appendix
+
+8 Variables Utilized:  
+
+|    Variable              | Explanation
+|:---:                     |:---:     |:---:  
+|Customer_Age              | Customer's Age in Years
+|Gender                    | M = Male, F = Female  
+|Education_Level           | Educational Qualification of the account holder
+|Marital_Status            | Married, Single, Divorced, Unknown
+|Income_Category           | Annual Income Category of the account holder
+|Card_Category             | Type of Card (Blue, Silver, Gold, Platinum)
+|Total_Relationship_Count  | Total no. of products held by the customer
+|Months_Inactive_12_mon    | Number of months inactive in the last 12 months
+
+```{r, echo = FALSE}
+sum_Churner <- BankChurners %>% select_if(is.character) %>% map( ~ table(.) %>% prop.table())
+```
+
+### Distributions of all numeric variables
+```{r, echo = FALSE, fig.height = 3, fig.width = 10, fig.cap = "Distributions of all numeric variables"}
+BankChurners %>% keep(is.numeric) %>%
+  gather() %>% ggplot(mapping = aes(x = value, fill = key)) + geom_histogram() + 
+  facet_wrap(~ key, scale = "free")
+```
 
 ### Pie Charts of Attrition_Flag
 
-a. Pie charts of Gender Proportion comparison for Existing and Attrited customers
-```{r, echo = FALSE}
-##### set pie for existing customers: Gender
-pie_existing_gender <- data.frame(class = c("Female", "Male"), Prop = c(53.10, 46.90))
-# Add label position
-pie_existing_gender <- pie_existing_gender %>%
-  arrange(desc(class)) %>%
-  mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
-# set colors
-mycols_gender <- c("#d0776e", "#b4dfec")
-
-##### set pie for attrited customers: Gender
-pie_attrited_gender <- data.frame(class = c("Female", "Male"), Prop = c(51.75, 48.25))
-# Add label position
-pie_attrited_gender <- pie_attrited_gender %>%
-  arrange(desc(class)) %>%
-  mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
-```
-
-```{r, echo = FALSE, fig.cap = "Gender Proportion Comparison", fig.width = 14}
-plot_existing_gender <- 
-  piechart(pie_existing_gender, "Existing Customer - Gender", mycols_gender)
-
-
-plot_attrited_gender <- 
-  piechart(pie_attrited_gender, "Attrited Customer - Gender", mycols_gender)
-
-
-ggarrange(plot_existing_gender, plot_attrited_gender, ncol = 2, nrow = 1)
-```
-
-b. Pie charts of Education Level Proportion comparison for Existing and Attrited customers
 ```{r, echo = FALSE}
 ##### set pie for existing customers: Education
 pie_existing_edu <- data.frame(class = c("College", "Doctorate", "Graduate", "High School", 
@@ -195,7 +409,7 @@ pie_attrited_edu <- pie_attrited_edu %>%
   mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
 ```
 
-```{r, echo = FALSE, fig.cap = "Education Level Proportion Comparison", fig.width = 14}
+```{r, echo = FALSE, fig.cap = "Education Level Proportion Comparison", fig.height = 5, fig.width = 14}
 plot_existing_edu <- 
   piechart(pie_existing_edu, "Existing Customer - Education Level", mycols_edu)
 
@@ -205,11 +419,6 @@ plot_attrited_edu <-
 ggarrange(plot_existing_edu, plot_attrited_edu, ncol = 2, nrow = 1)
 ```
 
-Figure 2:  
-
-Assuming that customers with "unknown" education level did not receive any education, we can observe that more than 70% of the customers have a formal education level for both existing and attrited customers. Moreover, about 40% have a higher level of education for two groups.
-
-c. Pie charts of Marital Status Proportion comparison for Existing and Attrited customers
 ```{r, echo = FALSE}
 ##### set pie for existing customers: Marital Status
 pie_existing_Marital <- data.frame(class = c("Divorced", "Married", "Single"), 
@@ -230,7 +439,7 @@ pie_attrited_Marital <- pie_attrited_Marital %>%
   mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
 ```
 
-```{r, echo = FALSE, fig.cap = "Marital Status Proportion Comparison", fig.width = 14}
+```{r, echo = FALSE, fig.cap = "Marital Status Proportion Comparison", fig.height = 5, fig.width = 14}
 plot_existing_Marital <- 
   piechart(pie_existing_Marital, "Existing Customer - Marital Status", mycols_Marital)
 
@@ -240,13 +449,6 @@ plot_attrited_Marital <-
 ggarrange(plot_existing_Marital, plot_attrited_Marital, ncol = 2, nrow = 1)
 ```
 
-Figure 3:
-
-"Almost half of the bank customers are married, and interestingly enough, almost the entire other half are single customers. only about 7% of the customers are divorced, which is surprising considering the worldwide divorce rate statistics!"
-
-The proportion of married status in attrited customers is slightly smaller than that in existing customers; correspondingly, the proportion of single status in attrited customers is slightly larger than that in existing customers.
-
-d. Pie charts of Income Category Proportion comparison for Existing and Attrited customers
 ```{r, echo = FALSE}
 ##### set pie for existing customers: Income Category
 pie_existing_income <- data.frame(class = c("$120K +", "$40K - $60K", "$60K - $80K", 
@@ -269,7 +471,7 @@ pie_attrited_income <- pie_attrited_income %>%
   mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
 ```
 
-```{r, echo = FALSE, fig.cap = "Income Category Proportion Comparison", fig.width = 14}
+```{r, echo = FALSE, fig.cap = "Income Category Proportion Comparison", fig.height = 5, fig.width = 14}
 plot_existing_income <- 
   piechart(pie_existing_income, "Existing Customer - income category", mycols_income)
 
@@ -279,265 +481,63 @@ plot_attrited_income <-
 ggarrange(plot_existing_income, plot_attrited_income, ncol = 2, nrow = 1)
 ```
 
-### Income Category
 ```{r, echo = FALSE}
-# Assign the level order
-income_level <- c("$120K +", "$40K - $60K", "$80K - $120K", 
-                  "$60K - $80K", "Less than $40K")
+# Assign the card category level order
+card_type <- c("Blue", "Gold", "Silver", "Platinum")
 
 # Find % of customers who are about to leave
-income <- BankChurners %>%
-  dplyr::select(Attrition_Flag, Income_Category) %>% 
-  count(Attrition_Flag, Income_Category) %>% 
-  group_by(Income_Category) %>% 
-  mutate(pct = n / sum(n)) %>% 
+card <- BankChurners %>%
+  dplyr::select(Attrition_Flag, Card_Category) %>% 
+  count(Attrition_Flag, Card_Category) %>% 
+  group_by(Card_Category) %>% 
+  mutate(percent = n / sum(n)) %>% 
   ungroup() %>% 
-  arrange(desc(pct)) %>% 
+  arrange(desc(percent)) %>% 
   mutate(
-    pct_txt = scales::percent(pct),
-    Income_Category = Income_Category %>% factor(levels = c("$120K +", "$40K - $60K", "$80K - $120K", 
-                  "$60K - $80K", "Less than $40K")) %>% fct_rev(),
-    Income_Category = Income_Category %>% as_factor() %>% fct_reorder(pct),
+    PERCENT = scales::percent(percent),
+    Card_Category = Card_Category %>% factor(levels = c("Blue", "Gold", "Silver", "Platinum")) %>% fct_rev(),
+    Card_Category = Card_Category %>% as_factor() %>% fct_reorder(percent),
     Attrition_Flag = Attrition_Flag %>% as_factor() %>% fct_rev()
   ) 
 ```
 
-```{r, echo = FALSE, fig.cap = "Income Category Proportion Analysis", fig.width = 10}
+```{r, echo = FALSE, fig.cap = "Income Category Proportion Analysis", fig.height = 5, fig.width = 14}
 # Plot Visualization
-income %>% 
-  ggplot(aes(x = Income_Category, y = pct, color= Attrition_Flag)) + 
-  geom_segment(aes(yend = 0, xend = Income_Category), size = 1) + 
-  geom_point() + geom_label(aes(label = pct_txt), hjust = "inward",
+card %>% 
+  ggplot(aes(x = Card_Category, y = percent, color= Attrition_Flag)) + 
+  geom_segment(aes(yend = 0, xend = Card_Category), size = 1) + 
+  geom_point() + geom_label(aes(label = PERCENT), hjust = "inward",
                             size = 3) + coord_flip() +
-  facet_wrap(~ Attrition_Flag)  + theme + 
+  facet_wrap(~ Attrition_Flag) + 
   theme(legend.position = "none") + 
   scale_colour_nejm() + 
   labs(
-    title = "Levels of Attrition by Income Category",
-    x = "Income Category",
+    title = "Levels of Attrition by Card Category",
+    x = "Card Category",
     y = "Attrition Percentage"
   )
 ```
 
-### Card Category
-```{r, echo = FALSE}
-card_category <- BankChurners %>% 
-  dplyr::select(Attrition_Flag, Card_Category) %>% 
-  count(Attrition_Flag, Card_Category) %>% 
-  group_by(Card_Category) %>% 
-  mutate(pct = n / sum(n)) %>% 
-  ungroup() %>% 
-  arrange(desc(pct)) %>% 
-    mutate(
-    pct_txt = scales::percent(pct),
-    Card_Category = Card_Category %>% as_factor() %>% fct_reorder(pct)
-    )
-```
-
-```{r, echo = FALSE, fig.cap = "Card Category Proportion Analysis", fig.width = 12}
-card_category %>% 
-  ggplot(aes(x = pct, y = Card_Category,  fill = Attrition_Flag)) +
-  geom_col(position = "dodge", width = 0.5, color = "black") +
-  facet_wrap(~ Attrition_Flag, scales = "free_x") + theme + 
-  scale_fill_nejm() +
-  scale_x_continuous(labels = scales::percent) + 
-  geom_label(aes(label = pct_txt), hjust = "inward", color = "white") +
-  labs(
-    title = "Distribution of Attrition by Card Category",
-    x = "Attrition Rate",
-    y = "Card Category"
-  )
-```
-
-"Platinum cards have the highest attrition rates." 
-
-### Level of Inactivity
-```{r, echo = FALSE, fig.cap = "Level of Inactivity", fig.width = 14}
-activity <- BankChurners %>% 
-  dplyr::select(Attrition_Flag, Months_Inactive_12_mon, Total_Trans_Amt)
-
-
-# Levels of Inactivity by attrition flag
-plot_activity <- activity %>% 
-  ggplot(aes(x = Months_Inactive_12_mon, y = Attrition_Flag, fill = Attrition_Flag)) + 
-  stat_density_ridges(quantile_lines = TRUE, quantiles = 2, alpha = 0.4) + 
-  scale_fill_nejm() + theme + 
-  labs(
-    title = "Level of Inactivity",
-    x = "Inactive Months", 
-    y = "Group"
-  )
-
-plot_activity
-```
-
-"Attrition Customers have higher levels of Inactivity (3 months vs 2 months Median)."
-
-### Total Customer Transactions
-```{r, echo = FALSE, fig,width = 14, fig.cap = "Total Customer Transactions Comparison"}
-CT_existing <- 
-  linechart(Existing, Existing$Total_Trans_Ct, 
-            "Total Existing Customer Transactions", "Number of Total Transactions")
-
-CT_attrited <- 
-  linechart(Attrited, Attrited$Total_Trans_Ct, 
-            "Total Attrited Customer Transactions", "Number of Total Transactions")
-
-ggarrange(CT_existing, CT_attrited, ncol = 2, nrow = 1)
-```
-
-### Correlation Analysis
-
-```{r, echo = FALSE, fig.width = 10}
-# Plot correlation funnel
-correlation <- BankChurners %>% binarize()
-
-correlation %>% 
-  correlate(target = Attrition_Flag__Attrited_Customer) %>% 
-  plot_correlation_funnel(interactive = FALSE) + theme 
-```
-
-The most important features are towards the top. We can investigate these.
-```{r, echo = FALSE, fig.width = 10}
-correlation %>%
-  correlate(target = Attrition_Flag__Attrited_Customer) %>%
-  filter(feature %in% c("Gender", "Education_Level", "Income_Category", "Marital_Status")) %>%
-  plot_correlation_funnel(interactive = FALSE, limits = c(-0.4, 0.4))
-```
-
-
-#####################
-
-
-\pagebreak
-
-
-## Model Fitting
-```{r, echo = FALSE}
-BankChurners$Attrition_Flag <- ifelse(BankChurners$Attrition_Flag == "Existing Customer", 1, 0)
-```
-
-```{r, echo = FALSE}
-fit_BankChurners <- glmer(Attrition_Flag ~ Customer_Age + Education_Level + Income_Category + 
+### Model Fitting
+```{r, warning = FALSE}
+fit_BankChurners_glmer <- glmer(Attrition_Flag ~ Customer_Age + Marital_Status + Income_Category + 
                             Card_Category + Total_Relationship_Count + Months_Inactive_12_mon + 
-                            (1 + Gender|Marital_Status), 
+                            (1 + Gender|Education_Level), 
                           data = BankChurners)
 ```
 
 ```{r, echo = FALSE}
-summary(fit_BankChurners)
+summary(fit_BankChurners_glmer)
 ```
 
 ```{r, echo = FALSE}
-Fixed_Effect <- round(fixef(fit_BankChurners)[1],3)
-Random_Effects <- round(ranef(fit_BankChurners)$Marital_Status,3)
+Fixed_Effect_glmer <- round(fixef(fit_BankChurners_glmer)[1], 3)
+Random_Effects_glmer <- round(ranef(fit_BankChurners_glmer)$Education_Level, 3)
 ```
 
 ```{r, echo = FALSE}
-print(Fixed_Effect)
-print(Random_Effects)
-#plot(fitted(fit_BankChurners), resid(fit_BankChurners))
-binnedplot(fitted(fit_BankChurners), resid(fit_BankChurners))
+print(Fixed_Effect_glmer)
+print(Random_Effects_glmer)
+#plot(fitted(fit_BankChurners_glmer), resid(fit_BankChurners_glmer))
+binnedplot(fitted(fit_BankChurners_glmer), resid(fit_BankChurners_glmer))
 ```
-
-
-
-# Reference
-
-1. https://cran.r-project.org/web/packages/correlationfunnel/vignettes/introducing_correlation_funnel.html
-
-
-
-
-
-\pagebreak
-
-# Appendix
-
-```{r, echo = FALSE}
-sum_Churner <- BankChurners %>% select_if(is.character) %>% map( ~ table(.) %>% prop.table())
-```
-
-Showing pie charts of overall analysis of the whole data.
-```{r, echo = FALSE}
-##### set pie 1: Attrition_Flag
-pie <- data.frame(class = c("Existing Customer", "Attrited Customer"),
-                  Total = c(5968, 1113),
-                  Prop = c(84.28, 15.72))
-# Add label position
-pie <- pie %>%
-  arrange(desc(class)) %>%
-  mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
-# set colors
-mycols <- c("#868686FF", "#0073C2FF")
-
-##### set pie 2: Gender
-pie2 <- data.frame(class = c("Female", "Male"), Prop = c(47.66, 52.34))
-# Add label position
-pie2 <- pie2 %>%
-  arrange(desc(class)) %>%
-  mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
-# set colors
-mycols2 <- c("#d0776e", "#b4dfec")
-
-##### set pie 3: Education_Level
-pie3 <- data.frame(class = c("College", "Doctorate", "Graduate", "High School", "Post-Graduate",
-                             "Uneducated"), 
-                   Prop = c(11.92, 5.06, 36.59, 23.34, 6.09, 17.00))
-# Add label position
-pie3 <- pie3 %>%
-  arrange(desc(class)) %>%
-  mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
-# set colors
-mycols3 <- c("#bfcdd0", "#6e7d75", "#d0776e", "#ebbdb1", "#eaaa65", "#d6e66f")
-
-##### set pie 4: Marital_Status
-pie4 <- data.frame(class = c("Divorced", "Married", "Single"), 
-                   Prop = c(8.04, 50.33, 41.63))
-# Add label position
-pie4 <- pie4 %>%
-  arrange(desc(class)) %>%
-  mutate(lab.ypos = cumsum(Prop) - 0.5*Prop)
-# set colors
-mycols4 <- c("#bcc0ec", "#e7a5cc", "#f281a7")
-
-```
-
-```{r, echo = FALSE} 
-ggplot(pie, aes(x = "", y = Prop, fill = class)) +
-  geom_bar(width = 1, stat = "identity", color = "white") +
-  coord_polar("y", start = 0) +
-  geom_text(aes(y = lab.ypos, label = Prop), color = "white") + 
-  ggtitle("Attrition Flag") + 
-  scale_fill_manual(values = mycols) +
-  theme_void()
-
-ggplot(pie2, aes(x = "", y = Prop, fill = class)) +
-  geom_bar(width = 1, stat = "identity", color = "white") +
-  coord_polar("y", start = 0) +
-  geom_text(aes(y = lab.ypos, label = Prop), color = "white") + 
-  ggtitle("Gender") + 
-  scale_fill_manual(values = mycols2) +
-  theme_void()
-
-ggplot(pie3, aes(x = "", y = Prop, fill = class)) +
-  geom_bar(width = 1, stat = "identity", color = "white") +
-  coord_polar("y", start = 0) +
-  geom_text(aes(y = lab.ypos, label = Prop), color = "white") + 
-  ggtitle("Education Level") + 
-  scale_fill_manual(values = mycols3) +
-  theme_void()
-
-ggplot(pie4, aes(x = "", y = Prop, fill = class)) +
-  geom_bar(width = 1, stat = "identity", color = "white") +
-  coord_polar("y", start = 0) +
-  geom_text(aes(y = lab.ypos, label = Prop), color = "white") + 
-  ggtitle("Education Level") + 
-  scale_fill_manual(values = mycols4) +
-  theme_void()
-```
-
-
-
-
-
