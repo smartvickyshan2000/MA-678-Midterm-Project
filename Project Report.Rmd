@@ -263,7 +263,7 @@ We can observe that Female Graduates in the low income category take up the most
 BankChurners$Attrition_Flag <- ifelse(BankChurners$Attrition_Flag == "Existing Customer", 0, 1)
 ```
 
-I used a multilevel model to fit the data, utilizing Education_Level as the varying intercept and Gender as the varying slope. I have attempted several multilevel models to get better fitting, including ‘lmer’ and ‘glmer’ (which is in the appendix). Comparing their results, I finally chose ‘stan_glmer’ because the response of this data set is binary, which needs to use logistic methods. The binned residual plot shows that ‘stan_glmer’ is a better model fit here as well, because most points fall inside the confidence bands, and there is not a distinctive pattern to the residuals. Additionally, I removed some variables which owns coefficients too small to identify and compare.
+I used a multilevel model to fit the data, utilizing Education_Level as the varying intercept and Gender as the varying slope. I have attempted several multilevel models to get better fitting, including ‘lmer’ and ‘glmer’ (which is in the appendix). Comparing their results, I finally chose ‘stan_glmer’ because the response of this data set is binary, which needs to use logistic methods.
 
 ```{r, include = FALSE}
 fit_BankChurners <- stan_glmer(Attrition_Flag ~ Customer_Age + Marital_Status + Income_Category + 
@@ -271,12 +271,15 @@ fit_BankChurners <- stan_glmer(Attrition_Flag ~ Customer_Age + Marital_Status + 
                             (1 + Gender|Education_Level), data = BankChurners)
 ```
 
+```{r}
+# fit_BankChurners <- stan_glmer(Attrition_Flag ~ Customer_Age + Marital_Status + Income_Category + 
+#                             Card_Category + Total_Relationship_Count + Months_Inactive_12_mon + 
+#                             (1 + Gender|Education_Level), data = BankChurners)
+```
+The binned residual plot shows that ‘stan_glmer’ is a better model fit here as well, because most points fall inside the confidence bands, and there is not a distinctive pattern to the residuals. Additionally, I removed some variables which owns coefficients too small to identify and compare.
+
 ```{r, echo = FALSE, message = FALSE}
 # summary(fit_BankChurners, digits = 4)
-```
-
-```{r, echo = FALSE, fig.align = "center", fig.height = 3, fig.width = 6}
-binnedplot(fitted(fit_BankChurners), resid(fit_BankChurners))
 ```
 
 # Result
@@ -383,6 +386,11 @@ sum_Churner <- BankChurners %>% select_if(is.character) %>% map( ~ table(.) %>% 
 BankChurners %>% keep(is.numeric) %>%
   gather() %>% ggplot(mapping = aes(x = value, fill = key)) + geom_histogram() + 
   facet_wrap(~ key, scale = "free")
+```
+
+### binned residual plot for stan_glmer model
+```{r, echo = FALSE, fig.align = "center"}
+binnedplot(fitted(fit_BankChurners), resid(fit_BankChurners))
 ```
 
 ### Pie Charts of Attrition_Flag
